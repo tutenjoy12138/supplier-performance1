@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>供应商绩效评估系统</title>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .file-input {
+            margin: 10px 0;
+            padding: 8px;
+            width: 100%;
+        }
+        .calculate-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 20px 0;
+        }
+        .result-section {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #4CAF50;
+            border-radius: 8px;
+            background-color: #f0fff4;
+        }
+        .metric-card {
+            padding: 15px;
+            margin: 10px 0;
+            background-color: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s;
+        }
+        .score-display {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>供应商绩效评估系统</h1>
+    
+    <div class="upload-section">
+        <h2>上传数据文件</h2>
+        <div>
+            <label>价格波动率数据 (Excel):</label>
+            <input type="file" id="priceVolatilityFile" class="file-input" accept=".xlsx, .xls">
+        </div>
+        <div>
+            <label>交货准时率数据 (Excel):</label>
+            <input type="file" id="deliveryOnTimeFile" class="file-input" accept=".xlsx, .xls">
+        </div>
+        <div>
+            <label>质量合格率数据 (Excel):</label>
+            <input type="file" id="qualityRateFile" class="file-input" accept=".xlsx, .xls">
+        </div>
+        
+        <button class="calculate-btn" onclick="calculatePerformance()">计算供应商绩效</button>
+    </div>
+    
+    <div id="resultSection" class="result-section">
+        <h2>供应商绩效评估结果</h2>
+        
+        <div class="metric-card">
+            <h3>交货准时率 <span id="deliveryRateValue">0%</span></h3>
+            <div>权重: 35%</div>
+            <div class="progress-bar">
+                <div id="deliveryProgress" class="progress-fill" style="width: 0%; background-color: #2196F3;"></div>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <h3>质量合格率 <span id="qualityRateValue">0%</span></h3>
+            <div>权重: 35%</div>
+            <div class="progress-bar">
+                <div id="qualityProgress" class="progress-fill" style="width: 0%; background-color: #FF9800;"></div>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <h3>价格波动率 <span id="volatilityValue">0%</span></h3>
+            <div>权重: 30%</div>
+            <div class="progress-bar">
+                <div id="volatilityProgress" class="progress-fill" style="width: 0%; background-color: #9C27B0;"></div>
+            </div>
+        </div>
+        
+        <div class="score-display">
+            供应商综合绩效得分: <span id="totalScore">0</span>
+        </div>
+    </div>
+
+    <script>
+        // 读取Excel文件的通用函数
+        function readExcelFile(file, callback) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                callback(workbook);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 计算交货准时率
+        function calculateDeliveryRate(workbook) {
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet);
+            
+            let onTimeCount = 0;
+            let totalDeliveries = 0;
+            
+            jsonData.forEach(row => {
+                const requiredDate = new Date(row['要求交期']);
+                const actualDate = new Date(row['实际到货日期']);
+                
+                if (!isNaN(requiredDate.getTime()) && !isNaN(actualDate.getTime())) {
+                    totalDeliveries++;
+                    // 实际日期早于或等于要求日期视为准时
+                    if (actualDate <= requiredDate) {
+                        onTimeCount++;
+                    }
+                }
+            });
+            
+            return totalDeliveries > 0 ? (onTimeCount / totalDeliveries) * 100 : 0;
+        }
+
+        // 计算质量合格率
+        function calculateQualityRate(workbook) {
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet);
+            
+            if (jsonData.length > 0) {
+                const row = jsonData[0];
+                const totalProducts = row['同一供应商总产品数量'];
+                const qualifiedProducts = row['同一供应商合格产品数量'];
+                
+                return totalProducts > 0 ? (qualifiedProducts / totalProducts) * 100 : 0;
+            }
+            return 0;
+        }
+
+        // 计算价格波动率
+        function calculatePriceVolatility(workbook) {
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet);
+            
+            let totalDeviation = 0;
+            let validRows = 0;
+            
+            jsonData.forEach(row => {
+                const targetPrice = row['近半年的原料目标价格'];
+                const actualPrice = row['近半年的原料实际价格'];
+                
+                if (typeof targetPrice === 'number' && typeof actualPrice === 'number' && targetPrice > 0) {
+                    validRows++;
+                    // 计算绝对偏差率
+                    const deviation = Math.abs(actualPrice - targetPrice) / targetPrice;
+                    totalDeviation += deviation;
+                }
+            });
+            
+            return validRows > 0 ? (totalDeviation / validRows) * 100 : 0;
+        }
+
+        // 主计算函数
+        function calculatePerformance() {
+            const priceFile = document.getElementById('priceVolatilityFile').files[0];
+            const deliveryFile = document.getElementById('deliveryOnTimeFile').files[0];
+            const qualityFile = document.getElementById('qualityRateFile').files[0];
+            
+            if (!priceFile || !deliveryFile || !qualityFile) {
+                alert('请上传所有三个Excel文件');
+                return;
+            }
+            
+            // 读取并处理三个文件
+            Promise.all([
+                new Promise(resolve => readExcelFile(priceFile, resolve)),
+                new Promise(resolve => readExcelFile(deliveryFile, resolve)),
+                new Promise(resolve => readExcelFile(qualityFile, resolve))
+            ]).then(([priceWorkbook, deliveryWorkbook, qualityWorkbook]) => {
+                // 计算各项指标
+                const deliveryRate = calculateDeliveryRate(deliveryWorkbook);
+                const qualityRate = calculateQualityRate(qualityWorkbook);
+                const priceVolatility = calculatePriceVolatility(priceWorkbook);
+                
+                // 计算综合绩效得分（价格波动率越低越好，所以用1减）
+                const weightedScore = 
+                    (deliveryRate * 0.35) + 
+                    (qualityRate * 0.35) + 
+                    ((100 - Math.min(priceVolatility, 100)) * 0.30)
+                
+                // 显示结果
+                document.getElementById('deliveryRateValue').textContent = deliveryRate.toFixed(2) + '%';
+                document.getElementById('qualityRateValue').textContent = qualityRate.toFixed(2) + '%';
+                document.getElementById('volatilityValue').textContent = priceVolatility.toFixed(2) + '%';
+                document.getElementById('totalScore').textContent = weightedScore.toFixed(2);
+                
+                // 更新进度条
+                document.getElementById('deliveryProgress').style.width = deliveryRate + '%';
+                document.getElementById('qualityProgress').style.width = qualityRate + '%';
+                document.getElementById('volatilityProgress').style.width = (100 - priceVolatility) + '%';
+                
+                // 显示结果区域
+                document.getElementById('resultSection').style.display = 'block';
+                
+                // 滚动到结果区域
+                document.getElementById('resultSection').scrollIntoView({behavior: 'smooth'});
+            });
+        }
+    </script>
+</body>
+</html>
